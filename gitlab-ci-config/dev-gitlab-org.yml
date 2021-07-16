@@ -68,7 +68,6 @@
       when: never
     - <<: *if-tag
       when: manual
-      allow_failure: true
 
 .dev-tag-only-except-auto-deploy: &dev-tag-only-except-auto-deploy
   rules:
@@ -104,7 +103,6 @@
       when: never
     - <<: *if-tag
       when: manual
-      allow_failure: true
 
 .dev-ee-tag-only-except-auto-deploy: &dev-ee-tag-only-except-auto-deploy
   rules:
@@ -128,7 +126,6 @@
       when: never
     - <<: *if-ee-tag
       when: manual
-      allow_failure: true
 
 .dev-tag-only-except-auto-deploy-or-rc: &dev-tag-only-except-auto-deploy-or-rc
   rules:
@@ -162,6 +159,8 @@
       when: never
     - <<: *unless-dev
       when: never
+    - <<: *if-ee-tag
+      when: never
     - <<: *if-rc-tag
       when: never
     - <<: *if-auto-deploy-tag
@@ -182,7 +181,6 @@
       when: never
     - <<: *if-tag
       when: manual
-      allow_failure: true
 
 .dev-ce-tag-only-except-rc-manual: &dev-ce-tag-only-except-rc-manual
   rules:
@@ -190,11 +188,14 @@
       when: never
     - <<: *unless-dev
       when: never
+    - <<: *if-auto-deploy-tag
+      when: never
+    - <<: *if-ee-tag
+      when: never
     - <<: *if-rc-tag
       when: never
     - <<: *if-ce-tag
       when: manual
-      allow_failure: true
 
 .dev-ee-tag-only-except-auto-deploy-or-rc-manual: &dev-ee-tag-only-except-auto-deploy-or-rc-manual
   rules:
@@ -208,7 +209,6 @@
       when: never
     - <<: *if-ee-tag
       when: manual
-      allow_failure: true
 
 .dev-ce-branch-only-except-nightly: &dev-ce-branch-only-except-nightly
   rules:
@@ -255,9 +255,12 @@
       when: never
     - <<: *unless-dev
       when: never
+    - <<: *if-auto-deploy-tag
+      when: never
+    - <<: *if-ee-tag
+      when: never
     - <<: *if-ce-tag
       when: manual
-      allow_failure: true
 
 .dev-ee-tag-only: &dev-ee-tag-only
   rules:
@@ -275,7 +278,6 @@
       when: never
     - <<: *if-ee-tag
       when: manual
-      allow_failure: true
 
 .dev-tag-and-nightly: &dev-tag-and-nightly
   rules:
@@ -305,7 +307,6 @@
       when: never
     - <<: *if-nightly
       when: manual
-      allow_failure: true
 
 .dev-ee-nightly-only: &dev-ee-nightly-only
   rules:
@@ -348,14 +349,15 @@
     - bundle exec rake build:project build:package:sync
     - bundle exec rake cache:bundle
     - bundle exec rake build:component_shas
-    - bundle exec rspec --color --format RspecJunitFormatter --out junit_ci_rspec.xml --format documentation ci_build_specs
+    # Run package size checks on nightlies. The job will create alerts, so we
+    # don't need it to fail and block the pipeline. Hence the `|| true`.
+    - if [ -n "$NIGHTLY" ]; then
+      bundle exec rake check:package_size || true;
+      fi
   tags:
   - docker-builder
   <<: *dev-branches-only
-  artifacts:
-    <<: *package-artifacts
-    reports:
-      junit: junit_ci_rspec.xml
+  artifacts: *package-artifacts
   needs:
     - job: fetch-assets
       optional: true
@@ -371,7 +373,7 @@
   variables:
     NO_SOURCEMAPS: "true"
   tags:
-  - docker-rpi-builder
+  - docker-arm-builder
   <<: *dev-ce-branch-only-except-nightly
   artifacts: *package-artifacts
   retry: 1
@@ -416,7 +418,7 @@
   variables:
     NO_SOURCEMAPS: "true"
   tags:
-  - docker-rpi-builder
+  - docker-arm-builder
   <<: *dev-ce-tag-only
 
 ### This stage is used for uploading packages
@@ -476,7 +478,6 @@
   - export AWS_ACCESS_KEY_ID=$AWS_AMI_ACCESS_KEY_ID
   - export AWS_SECRET_ACCESS_KEY=$AWS_AMI_SECRET_ACCESS_KEY
   - bundle exec rake aws:ami:create
-  allow_failure: true
   tags:
   - docker-builder
   <<: *dev-tag-only-except-auto-deploy-or-rc-manual
@@ -488,7 +489,6 @@
 .aws_marketplace_release: &aws_marketplace_release
   image: "${BUILDER_IMAGE_REGISTRY}/ruby_docker:${BUILDER_IMAGE_REVISION}"
   stage: aws-marketplace-release
-  allow_failure: true
   script:
     - export AWS_ACCESS_KEY_ID=$AWS_AMI_ACCESS_KEY_ID
     - export AWS_SECRET_ACCESS_KEY=$AWS_AMI_SECRET_ACCESS_KEY
@@ -592,7 +592,6 @@ QA-branch:
     expire_in: 7d
     paths:
     - screenshots/
-  allow_failure: true
   <<: *dev-branches-only
   tags:
   - docker-builder
@@ -949,7 +948,6 @@ QA-Tag:
     expire_in: 7d
     paths:
     - screenshots/
-  allow_failure: true
   <<: *dev-tag-only-except-auto-deploy-manual
   tags:
   - docker-builder
@@ -966,7 +964,6 @@ license-upload:
   image: "${BUILDER_IMAGE_REGISTRY}/ubuntu_18.04:${BUILDER_IMAGE_REVISION}"
   script:
     - bundle exec rake license:upload
-  allow_failure: true
   <<: *dev-tag-only-except-auto-deploy-manual
   tags:
   - docker-builder

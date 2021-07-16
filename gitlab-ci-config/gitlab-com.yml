@@ -22,6 +22,16 @@
     - triggers@gitlab-org/build/omnibus-gitlab-mirror
     - pipelines@gitlab-org/build/omnibus-gitlab-mirror
 
+.com-trigger-and-nightly-only: &com-trigger-and-nightly-only
+  only:
+    refs:
+      - triggers@gitlab-org/build/omnibus-gitlab-mirror
+      - pipelines@gitlab-org/build/omnibus-gitlab-mirror
+      - schedules@gitlab-org/build/omnibus-gitlab-mirror
+  except:
+    variables:
+      - $DEPS_PIPELINE || $CACHE_UPDATE || $DEPENDENCY_SCANNING
+
 .depscan-rules: &depscan-rules
   only:
     refs:
@@ -240,7 +250,7 @@ docs-lint markdown:
     # Lint prose
     - vale --minAlertLevel error doc
     # Lint Markdown
-    - markdownlint --config .markdownlint.json 'doc/**/*.md'
+    - markdownlint --config .markdownlint.yml 'doc/**/*.md'
   except:
     refs:
       - /./@gitlab/omnibus-gitlab
@@ -406,16 +416,14 @@ Trigger:package:
     - *build-package
     # Renaming so we can easily generate the artifact URL
     - mv pkg/ubuntu-focal/*.deb pkg/ubuntu-focal/gitlab.deb
-    - bundle exec rspec --color --format RspecJunitFormatter --out junit_ci_rspec.xml --format documentation ci_build_specs
+    - mv pkg/ubuntu-focal/*.deb.size pkg/ubuntu-focal/gitlab.deb.size
     - bundle exec rake build:component_shas
-  <<: *com-trigger-only
+  <<: *com-trigger-and-nightly-only
   artifacts:
     expire_in: 3 days
     when: always
     paths:
       - pkg/
-    reports:
-      junit: junit_ci_rspec.xml
   tags:
     - triggered-packages
   needs:
@@ -424,6 +432,18 @@ Trigger:package:
     - job: generate-facts
       optional: true
       artifacts: true
+
+Trigger:package_size_check:
+  extends: .trigger-package-cache
+  image: "${BUILDER_IMAGE_REGISTRY}/ubuntu_20.04:${BUILDER_IMAGE_REVISION}"
+  stage: trigger-qa
+  script:
+    - bundle exec rake build:package:generate_sizefile
+    - bundle exec rake check:package_size
+  <<: *com-trigger-only
+  needs:
+    - job: Trigger:package
+      artifacts: false
 
 Trigger:gitlab-docker:
   extends:
@@ -558,6 +578,7 @@ dependencies_io_check:
   image: "${RUBY_IMAGE}"
   stage: trigger-package
   script:
+    - support/wait_for_sha
     - bundle exec rake build:trigger
   only:
     refs:

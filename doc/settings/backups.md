@@ -47,6 +47,9 @@ weekday, Tuesday (day 2) through Saturday (day 6):
 15 04 * * 2-6  gitlab-ctl backup-etc && cd /etc/gitlab/config_backup && cp $(ls -t | head -n1) /secret/gitlab/backups/
 ```
 
+NOTE:
+Make sure that `/secret/gitlab/backups/` exists.
+
 You can extract the .tar file as follows.
 
 ```shell
@@ -119,6 +122,10 @@ gitlab_rails['backup_path'] = '/mnt/backups'
 
 ## Creating backups for GitLab instances in Docker containers
 
+WARNING:
+The backup command requires [additional parameters](https://docs.gitlab.com/ee/raketasks/backup_restore.html#backup-and-restore-for-installations-using-pgbouncer) 
+when your installation is using PgBouncer, for either performance reasons or when using it with a Patroni cluster.
+
 Backups can be scheduled on the host by prepending `docker exec -t <your container name>` to the commands.
 
 Backup application:
@@ -130,7 +137,7 @@ docker exec -t <your container name> gitlab-backup
 Backup configuration and secrets:
 
 ```shell
-docker exec -t <your container name> /bin/sh -c 'umask 0077; tar cfz /secret/gitlab/backups/$(date "+etc-gitlab-\%s.tgz") -C / etc/gitlab'
+docker exec -t <your container name> /bin/sh -c 'gitlab-ctl backup-etc && cd /etc/gitlab/config_backup && cp $(ls -t | head -n1) /secret/gitlab/backups/'
 ```
 
 NOTE:
